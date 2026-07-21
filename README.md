@@ -283,6 +283,40 @@ Variables d'environnement (toutes optionnelles pour l'instant) :
 - Vérifié de bout en bout : `201` création · `200` liste/détail · `404` slug inconnu ·
   `409` slug déjà pris · `400` niveau invalide · `400` champ JSON inconnu.
 
+### 🗺️ Plan du front (M5) — React / TypeScript / Chakra UI / Vite
+
+> Stack choisie pour couvrir le bullet CV **et** les attentes des offres visées :
+> React + TypeScript (partout), **Chakra UI** (demandé explicitement chez un éditeur cyber),
+> **Vite** (outillage), **react-router** (SPA multi-pages), responsive.
+
+**M5a — Ossature**
+- Projet **Vite + React + TypeScript**
+- **Chakra UI** installé, thème de base (couleurs, typographie)
+- **react-router** : layout commun + 4 routes (accueil, catalogue, détail, connexion)
+- Client HTTP typé vers l'API Go (types partagés avec le JSON du back)
+
+**M5b — Catalogue public** *(consomme `GET /api/services`)*
+- Page **listing** : grille de cartes, **composants réutilisables** (`ServiceCard`, `Badge` de gamme, `Price`)
+- Page **détail** par slug (`GET /api/services/{slug}`)
+- **États de chargement / erreur / liste vide** traités explicitement (squelettes Chakra)
+- Filtres et pagination branchés sur `limit` / `offset`
+
+**M5c — Authentification** *(dépend du M3 back)*
+- Page de **connexion**, stockage du jeton, en-tête `Authorization`
+- **Route protégée** : redirection si non authentifié
+- Gestion du 401 côté client
+
+**M5d — Espace d'administration**
+- **Formulaire de création** avec **validation** (miroir des règles du back : slug, gamme, durée, prix)
+- Affichage des erreurs API (409 slug pris, 400 validation) sur les bons champs
+- Bascule brouillon / publié
+
+**M5e — Finitions**
+- **Responsive** mobile / desktop (grille Chakra)
+- Accessibilité de base (labels, focus, contrastes)
+- Quelques **tests** de composants
+- Build de production servi par l'API Go
+
 ### ⏭️ Prochaines étapes
 - **M2** — la ressource principale : schéma SQL + migrations + accès `pgx` + CRUD + test.
 - **M3** — authentification JWT. · **M4** — cache Redis sur le listing.
