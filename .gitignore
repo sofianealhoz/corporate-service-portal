@@ -1,0 +1,16 @@
+# binaires compilés
+/api
+/bin/
+*.exe
+
+# secrets et config locale (ne JAMAIS committer)
+.env
+.env.local
+
+# dépendances front (M5)
+node_modules/
+dist/
+
+# divers
+*.log
+.DS_Store
