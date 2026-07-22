@@ -1,5 +1,5 @@
 // Package config centralise la lecture des réglages de l'application.
-// Principe : le code ne contient JAMAIS de valeur d'environnement en dur
+// Le code ne contient pas de valeur d'environnement en dur
 // (port, mot de passe, URL de base). Tout vient de variables d'environnement,
 // ce qui permet de faire tourner le même binaire en local et en production.
 package config

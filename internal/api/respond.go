@@ -8,7 +8,7 @@ import (
 
 // writeJSON sérialise `v` en JSON et l'écrit dans la réponse.
 //
-// ⚠️ Ordre imposé par net/http : headers -> code de statut -> corps.
+// Ordre imposé par net/http : headers, puis code de statut, puis corps.
 // Inverser fait perdre silencieusement le code de statut (Go envoie 200 d'office).
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -28,7 +28,7 @@ type errorResponse struct {
 
 // writeError renvoie une erreur au format JSON.
 //
-// Règle : le message doit être utile au client SANS révéler l'intérieur du
+// Le message doit être utile au client sans révéler l'intérieur du
 // système (pas de message d'erreur PostgreSQL brut, qui divulguerait la
 // structure de la base à un attaquant).
 func writeError(w http.ResponseWriter, status int, msg string) {

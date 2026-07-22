@@ -1,6 +1,6 @@
 // Commande `api` : point d'entrée du serveur HTTP.
 //
-// Ce fichier ne contient AUCUNE logique métier. Son unique rôle est d'assembler
+// Ce fichier ne contient aucune logique métier. Son unique rôle est d'assembler
 // les morceaux (config -> routeur -> serveur) et de gérer le cycle de vie du
 // processus (démarrage, arrêt propre). Toute la logique vit dans internal/.
 package main
@@ -57,9 +57,8 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	// ListenAndServe est BLOQUANT : on le lance dans une goroutine (un fil
-	// d'exécution léger géré par Go) pour que main puisse continuer et se mettre
-	// en attente du signal d'arrêt juste en dessous.
+	// ListenAndServe est bloquant, donc on le lance dans une goroutine pour que
+	// main puisse continuer et attendre le signal d'arrêt juste en dessous.
 	go func() {
 		log.Printf("API démarrée sur http://localhost:%s", cfg.Port)
 		// À l'arrêt volontaire, ListenAndServe renvoie ErrServerClosed :

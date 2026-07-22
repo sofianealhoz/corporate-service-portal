@@ -2,12 +2,10 @@ package service
 
 import "testing"
 
-// Test « table-driven » : l'idiome standard en Go.
-// On déclare une table de cas, puis on boucle dessus.
-// Équivalent de @pytest.mark.parametrize en Python.
+// Test table-driven : on déclare une table de cas, puis on boucle dessus.
 //
 // Note : aucune base de données ici. C'est tout l'intérêt d'avoir séparé les
-// règles métier (model) de l'accès aux données (repo) — ce test tourne en
+// règles métier (model) de l'accès aux données (repo) : ce test tourne en
 // quelques millisecondes, sans PostgreSQL.
 func TestCreateInputValidate(t *testing.T) {
 	// valid = un jeu de données correct, qu'on dégrade dans chaque cas.

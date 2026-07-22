@@ -11,13 +11,12 @@ import (
 // services ; demain le cache Redis, le service d'authentification...).
 //
 // Pourquoi une structure plutôt que des variables globales : chaque handler
-// est une MÉTHODE sur *API, donc il accède à ses dépendances via le receveur.
+// est une méthode sur *API, donc il accède à ses dépendances via le receveur.
 // Dans un test, on construit un API avec un repository branché sur une base de
-// test — sans toucher au code des handlers.
+// test, sans toucher au code des handlers.
 //
-// Parallèle : en Django, une vue importe les modèles directement (état global).
-// Ici tout est passé explicitement — plus verbeux, mais on voit toujours d'où
-// vient chaque dépendance, et rien n'est caché.
+// Tout est passé explicitement : c'est un peu plus verbeux, mais on voit
+// toujours d'où vient chaque dépendance.
 type API struct {
 	services *service.Repository
 }
@@ -30,17 +29,17 @@ func New(services *service.Repository) *API {
 // Router construit le routeur HTTP et y branche les routes.
 //
 // Un routeur fait une seule chose : regarder la méthode (GET/POST/...) et le
-// chemin d'une requête entrante, puis appeler le bon handler.  (≈ urls.py)
+// chemin d'une requête entrante, puis appeler le bon handler.
 //
 // Pourquoi chi plutôt que net/http seul : il apporte les middlewares et les
-// paramètres d'URL (/services/{slug}) tout en restant 100 % compatible —
-// un handler chi EST un http.HandlerFunc ordinaire. Rien de magique n'est caché,
-// contrairement à un framework plus lourd type Gin.
+// paramètres d'URL (/services/{slug}) tout en restant compatible :
+// un handler chi est un http.HandlerFunc ordinaire, donc rien n'est masqué,
+// contrairement à un framework plus lourd comme Gin.
 func (a *API) Router() *chi.Mux {
 	r := chi.NewRouter()
 
-	// Traversés par CHAQUE requête, dans cet ordre, avant d'atteindre le handler
-	// — puis en sens inverse pour la réponse.  (≈ app.use() d'Express)
+	// Traversés par chaque requête, dans cet ordre, avant d'atteindre le handler
+	// puis en sens inverse pour la réponse.
 	r.Use(middleware.RequestID) // identifiant unique par requête (traçabilité des logs)
 	r.Use(middleware.RealIP)    // vraie IP client même derrière un proxy
 	r.Use(middleware.Logger)    // journalise méthode, chemin, statut, durée

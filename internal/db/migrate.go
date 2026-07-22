@@ -10,7 +10,7 @@ import (
 )
 
 // go:embed embarque les fichiers .sql DANS le binaire compilé.
-// Conséquence : on déploie UN SEUL fichier exécutable, sans avoir à copier
+// Conséquence : on déploie un seul fichier exécutable, sans avoir à copier
 // le dossier migrations/ à côté. Les fichiers doivent être sous ce paquet,
 // d'où internal/db/migrations/ plutôt qu'un dossier à la racine.
 //

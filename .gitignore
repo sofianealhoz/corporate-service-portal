@@ -14,3 +14,6 @@ dist/
 # divers
 *.log
 .DS_Store
+
+# notes perso, jamais publiees
+NOTES-LOCAL.md

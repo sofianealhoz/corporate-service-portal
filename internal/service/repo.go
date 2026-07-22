@@ -10,14 +10,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Repository = le SEUL endroit du projet qui écrit du SQL sur les services.
+// Repository est le seul endroit du projet qui écrit du SQL sur les services.
 // Tout le reste du code passe par ses méthodes.
 type Repository struct {
 	pool *pgxpool.Pool
 }
 
 // NewRepository construit le repository à partir du pool de connexions.
-// La dépendance est PASSÉE (injection), pas récupérée d'une variable globale :
+// La dépendance est injectée plutôt que récupérée d'une variable globale :
 // on peut ainsi en créer un autre, branché sur une base de test.
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool}
@@ -28,7 +28,7 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 const columns = `id, slug, title, description, tier, duration_h, price_cents, published, created_at, updated_at`
 
 // scanRow lit une ligne SQL vers une struct Service.
-// L'ORDRE des champs doit correspondre EXACTEMENT à celui de `columns`.
+// L'ordre des champs doit correspondre exactement à celui de `columns`.
 func scanRow(row pgx.Row) (Service, error) {
 	var s Service
 	err := row.Scan(
@@ -48,8 +48,8 @@ func (r *Repository) List(ctx context.Context, onlyPublished bool, limit, offset
 		limit = 20 // garde-fou : un client ne peut pas réclamer 1 million de lignes
 	}
 
-	// $1, $2... = requête PARAMÉTRÉE. Les valeurs sont envoyées séparément du
-	// texte SQL, donc elles ne peuvent JAMAIS être interprétées comme du code :
+	// Requête paramétrée : les valeurs sont envoyées séparément du
+	// texte SQL, donc elles ne peuvent pas être interprétées comme du code :
 	// c'est ce qui rend l'injection SQL impossible. Ne jamais construire une
 	// requête par concaténation de chaînes.
 	query := `SELECT ` + columns + `
@@ -73,7 +73,7 @@ func (r *Repository) List(ctx context.Context, onlyPublished bool, limit, offset
 		}
 		services = append(services, s)
 	}
-	// rows.Err() : une erreur peut survenir PENDANT l'itération (connexion coupée).
+	// Une erreur peut survenir pendant l'itération, par exemple une connexion coupée.
 	// L'oublier ferait passer une liste tronquée pour un résultat complet.
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("parcours des services : %w", err)
@@ -116,9 +116,9 @@ func (r *Repository) Create(ctx context.Context, in CreateInput) (Service, error
 	))
 	if err != nil {
 		// 23505 = violation de contrainte d'unicité (ici : slug déjà pris).
-		// On laisse la BASE arbitrer plutôt que de faire un SELECT avant l'INSERT :
+		// On laisse la base arbitrer plutôt que de faire un SELECT avant l'INSERT :
 		// entre les deux, une autre requête pourrait insérer le même slug
-		// (situation de compétition). La contrainte, elle, est infaillible.
+		// (situation de compétition), alors que la contrainte est fiable.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return Service{}, ErrSlugTaken

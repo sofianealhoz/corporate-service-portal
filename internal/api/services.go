@@ -14,9 +14,8 @@ import (
 
 // listResponse enveloppe la liste renvoyée.
 //
-// Pourquoi un objet plutôt qu'un tableau JSON nu : on peut ajouter des champs
-// (total, page suivante...) plus tard SANS casser les clients existants.
-// Un tableau nu ne laisse aucune place à l'évolution.
+// Un objet plutôt qu'un tableau nu : on peut ajouter des champs (total, page
+// suivante) plus tard sans casser les clients existants.
 type listResponse struct {
 	Items []service.Service `json:"items"`
 	Count int               `json:"count"`
@@ -73,7 +72,7 @@ func (a *API) handleGetService(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleCreateService(w http.ResponseWriter, r *http.Request) {
 	var in service.CreateInput
 
-	// DisallowUnknownFields : un champ inconnu dans le JSON provoque une erreur
+	// Un champ inconnu dans le JSON provoque une erreur
 	// au lieu d'être ignoré en silence. Ça transforme une faute de frappe du
 	// client ("titel" au lieu de "title") en message clair plutôt qu'en
 	// création d'un service au titre vide.
