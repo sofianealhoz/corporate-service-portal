@@ -1,57 +1,42 @@
-# Environnement de développement : les dépendances de l'API (base + cache).
-#
-# Pourquoi Docker plutôt qu'installer PostgreSQL/Redis sur la machine :
-#   - l'environnement est DÉCRIT dans un fichier versionné -> reproductible à l'identique
-#     sur n'importe quelle machine (`docker compose up`) ;
-#   - on peut tout supprimer proprement (`docker compose down -v`) sans polluer le système ;
-#   - c'est ce qu'on retrouve en production (mêmes images, mêmes versions).
-#
-# Lancer  : docker compose up -d
-# Arrêter : docker compose down          (garde les données)
-# Reset   : docker compose down -v       (SUPPRIME les données du volume)
+# Dépendances de l'API en développement.
+#   docker compose up -d      démarrer
+#   docker compose down       arrêter, données conservées
+#   docker compose down -v    arrêter et supprimer les données
 
 services:
-  # --- PostgreSQL : la base de données relationnelle (utilisée dès le M2) ---
   db:
-    image: postgres:17-alpine # 'alpine' = image minimale (~80 Mo au lieu de ~400)
+    image: postgres:17-alpine
     container_name: portal-db
     environment:
-      # Ces 3 variables sont lues par l'image postgres au TOUT PREMIER démarrage
-      # pour créer l'utilisateur et la base. Identifiants de dev uniquement.
+      # identifiants de développement uniquement
       POSTGRES_USER: portal
       POSTGRES_PASSWORD: portal
       POSTGRES_DB: portal
     ports:
-      # "hôte:conteneur" -> la base est joignable depuis la machine sur localhost:5432,
-      # ce qui permet de lancer l'API avec `go run` hors conteneur pendant le dev.
+      # exposé sur l'hôte pour lancer l'API avec go run hors conteneur
       - "5432:5432"
     volumes:
-      # Sans volume, les données disparaîtraient à chaque suppression du conteneur.
-      # Le volume nommé 'pgdata' les fait survivre.
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      # Permet à Docker de savoir si la base est réellement PRÊTE (et pas juste démarrée).
-      # Utile plus tard : l'API pourra attendre que la base soit saine avant de démarrer.
+      # savoir si la base est prête, pas seulement démarrée
       test: ["CMD-SHELL", "pg_isready -U portal -d portal"]
       interval: 5s
       timeout: 3s
       retries: 5
     restart: unless-stopped
 
-  # --- Redis : le cache en mémoire (utilisé au M4) ---
   redis:
     image: redis:7-alpine
     container_name: portal-redis
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"] # doit répondre PONG
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
     restart: unless-stopped
-    # Pas de volume : un cache est par nature JETABLE. S'il est vidé, l'application
-    # va simplement rechercher la donnée en base et re-remplir le cache.
+    # pas de volume : un cache est jetable, il se re-remplit depuis la base
 
 volumes:
   pgdata:

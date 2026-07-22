@@ -9,21 +9,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// go:embed embarque les fichiers .sql DANS le binaire compilé.
-// Conséquence : on déploie un seul fichier exécutable, sans avoir à copier
-// le dossier migrations/ à côté. Les fichiers doivent être sous ce paquet,
-// d'où internal/db/migrations/ plutôt qu'un dossier à la racine.
+// les .sql sont embarqués dans le binaire : un seul fichier à déployer
 //
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
-// Migrate applique, dans l'ordre, les migrations pas encore appliquées.
-//
-// Principe (le même que Django ou Knex) : une table de suivi mémorise les
-// versions déjà passées, donc relancer l'application ne rejoue rien.
+// applique les migrations pas encore passées, dans l'ordre
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	// 1. La table qui mémorise ce qui a déjà été appliqué.
-	//    (≈ la table django_migrations de Django)
 	_, err := pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version    TEXT PRIMARY KEY,
@@ -33,8 +25,6 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("création de schema_migrations : %w", err)
 	}
 
-	// 2. Lister les fichiers embarqués et les TRIER : l'ordre d'application
-	//    doit être déterministe (0001 avant 0002), jamais l'ordre du système de fichiers.
 	entries, err := migrationFS.ReadDir("migrations")
 	if err != nil {
 		return fmt.Errorf("lecture du dossier migrations : %w", err)
@@ -45,9 +35,8 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 			names = append(names, e.Name())
 		}
 	}
-	sort.Strings(names)
+	sort.Strings(names) // ordre déterministe, pas celui du système de fichiers
 
-	// 3. Appliquer celles qui manquent.
 	for _, name := range names {
 		var exists bool
 		err := pool.QueryRow(ctx,
@@ -57,7 +46,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("vérification de %s : %w", name, err)
 		}
 		if exists {
-			continue // déjà appliquée
+			continue
 		}
 
 		content, err := migrationFS.ReadFile("migrations/" + name)
@@ -65,9 +54,8 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("lecture de %s : %w", name, err)
 		}
 
-		// TRANSACTION : le SQL de la migration ET l'enregistrement de sa version
-		// réussissent ensemble, ou échouent ensemble. Sans ça, une panne au mauvais
-		// moment laisserait la base à moitié migrée sans qu'on le sache.
+		// transaction : le SQL et l'enregistrement de la version passent ensemble
+		// ou pas du tout, sinon la base reste à moitié migrée
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("ouverture de transaction pour %s : %w", name, err)
