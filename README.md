@@ -8,15 +8,32 @@ chez CICAPE. Le dépôt ne couvre que certaines briques du site.
 
 ## Stack
 
-Go, chi, pgx, PostgreSQL, Redis, Docker. Front React / TypeScript / Vite / Chakra UI.
+Go, chi, pgx, PostgreSQL, Docker. Front React / TypeScript / Vite / Chakra UI.
+
+Redis est démarré par le `docker-compose` et son URL est lue par la configuration,
+mais l'API ne s'en sert pas encore : rien n'est mis en cache aujourd'hui.
 
 ## Lancer le projet
+
+L'API :
 
 ```bash
 docker compose up -d       # PostgreSQL et Redis
 go run ./cmd/api           # API sur :8080
 curl localhost:8080/health
 ```
+
+Le front, dans un second terminal :
+
+```bash
+cd web
+npm install
+npm run dev                # front sur :5173
+```
+
+Vite proxifie `/api` vers `http://localhost:8080` : le navigateur ne voit qu'une
+seule origine, donc pas de CORS en développement. Détails dans
+[`web/README.md`](web/README.md).
 
 Variables d'environnement, toutes optionnelles en développement :
 
@@ -44,12 +61,23 @@ internal/
   api/             routeur, handlers, écriture des réponses
   service/         domaine : structure, validation, accès aux données
   db/              pool de connexions et migrations
+web/               front React / TypeScript / Vite, consomme l'API
 ```
 
 Le paquet `service` contient deux fichiers aux rôles distincts. `model.go` définit
 ce qu'est un service et ses règles de validation, sans aucun SQL. `repo.go` est le
 seul endroit du projet qui écrit du SQL. Cette séparation permet de tester les
 règles métier sans base de données.
+
+## Tests
+
+```bash
+go test ./...
+```
+
+`internal/service/model_test.go` couvre la validation de `CreateInput` en
+table-driven, sept cas. Aucune base n'est nécessaire pour le lancer, c'est
+précisément ce que permet la séparation décrite au-dessus.
 
 ## Architecture
 
@@ -120,6 +148,5 @@ sous charge.
 
 ## À venir
 
-Front React : catalogue, fiche détaillée, formulaire d'administration avec
-validation, authentification et pages réservées. Cache Redis sur le listing.
-Déploiement.
+Front : fiche détaillée, formulaire d'administration avec validation.
+Authentification et pages réservées. Cache Redis sur le listing. Déploiement.
