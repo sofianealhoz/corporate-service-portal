@@ -68,12 +68,21 @@ internal/
   cache/           cache Redis, optionnel par construction
   testdb/          base jetable pour les tests d'intégration
 web/               front React / TypeScript / Vite, consomme l'API
+  src/components/  composants d'affichage, sans accès à l'API
+  src/api.ts       seul endroit du front qui connaît les URLs
 ```
 
 Le paquet `service` contient deux fichiers aux rôles distincts. `model.go` définit
 ce qu'est un service et ses règles de validation, sans aucun SQL. `repo.go` est le
 seul endroit du projet qui écrit du SQL. Cette séparation permet de tester les
 règles métier sans base de données.
+
+Le front suit la même règle. `src/api.ts` est le seul fichier qui connaisse les
+URLs de l'API ; les composants de `src/components/` reçoivent en props ce qu'ils
+affichent et ne déclenchent aucune requête, ce qui les rend réutilisables et
+testables isolément. Deux écrans les assemblent : `Catalogue.tsx`, avec
+pagination et bascule des brouillons, et `ServiceDetail.tsx`, sur
+`/services/{slug}`.
 
 ## Tests
 
@@ -188,5 +197,5 @@ cesserait d'essayer après une série d'échecs.
 
 ## À venir
 
-Front : fiche détaillée, formulaire d'administration avec validation.
-Authentification et pages réservées. Déploiement.
+Front : formulaire d'administration avec validation. Authentification et pages
+réservées. Déploiement.
