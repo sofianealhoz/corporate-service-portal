@@ -41,9 +41,14 @@ func (a *API) handleListServices(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleGetService(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 
-	s, err := a.services.GetBySlug(r.Context(), slug)
+	// pas encore d'authentification : personne ne voit les brouillons. Un
+	// contrôle administrateur se brancherait ici et passerait true.
+	const includeUnpublished = false
+
+	s, err := a.services.GetBySlug(r.Context(), slug, includeUnpublished)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
+			// 404 et non 403 : un refus confirmerait que le slug existe
 			writeError(w, http.StatusNotFound, "service introuvable")
 			return
 		}

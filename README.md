@@ -52,6 +52,9 @@ Variables d'environnement, toutes optionnelles en développement :
 | `GET` | `/api/services/{slug}` | détail d'un service |
 | `POST` | `/api/services` | création |
 
+Un service non publié n'est servi ni par le listing ni par le détail : son slug
+répond 404, et non 403, pour ne pas révéler qu'il existe.
+
 ## Structure
 
 ```
@@ -78,6 +81,12 @@ go test ./...
 `internal/service/model_test.go` couvre la validation de `CreateInput` en
 table-driven, sept cas. Aucune base n'est nécessaire pour le lancer, c'est
 précisément ce que permet la séparation décrite au-dessus.
+
+`internal/api/services_test.go` monte le routeur avec `httptest` sur une vraie
+base et vérifie qu'un brouillon répond 404 sur le détail. Il a besoin de
+PostgreSQL : lancer `docker compose up -d` avant. Sans base joignable il est
+ignoré, jamais en échec, pour que `go test ./...` reste vert sur un clone sans
+Docker.
 
 ## Architecture
 

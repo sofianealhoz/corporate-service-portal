@@ -69,10 +69,16 @@ func (r *Repository) List(ctx context.Context, onlyPublished bool, limit, offset
 	return services, nil
 }
 
-func (r *Repository) GetBySlug(ctx context.Context, slug string) (Service, error) {
-	query := `SELECT ` + columns + ` FROM services WHERE slug = $1`
+// includeUnpublished aligne le détail sur le listing : un brouillon reste
+// invisible tant que l'appelant n'a pas le droit de le voir. C'est le point
+// d'extension pour un accès administrateur, encore inutilisé faute
+// d'authentification.
+func (r *Repository) GetBySlug(ctx context.Context, slug string, includeUnpublished bool) (Service, error) {
+	query := `SELECT ` + columns + `
+	          FROM services
+	          WHERE slug = $1 AND ($2::bool OR published = TRUE)`
 
-	s, err := scanRow(r.pool.QueryRow(ctx, query, slug))
+	s, err := scanRow(r.pool.QueryRow(ctx, query, slug, includeUnpublished))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Service{}, ErrNotFound // pas une panne, un 404
