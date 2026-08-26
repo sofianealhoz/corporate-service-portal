@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sofianealhoz/corporate-service-portal/internal/api"
+	"github.com/sofianealhoz/corporate-service-portal/internal/cache"
 	"github.com/sofianealhoz/corporate-service-portal/internal/config"
 	"github.com/sofianealhoz/corporate-service-portal/internal/db"
 	"github.com/sofianealhoz/corporate-service-portal/internal/service"
@@ -36,8 +37,12 @@ func main() {
 	}
 	log.Println("migrations à jour")
 
+	// pas de vérification bloquante : l'API doit démarrer même sans Redis
+	redis := cache.New(cfg.RedisURL)
+	defer redis.Close()
+
 	services := service.NewRepository(pool)
-	handlers := api.New(services)
+	handlers := api.New(services, redis)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

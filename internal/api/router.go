@@ -4,6 +4,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/sofianealhoz/corporate-service-portal/internal/cache"
 	"github.com/sofianealhoz/corporate-service-portal/internal/service"
 )
 
@@ -11,10 +12,13 @@ import (
 // on peut en construire une autre branchée sur une base de test
 type API struct {
 	services *service.Repository
+	cache    *cache.Cache
 }
 
-func New(services *service.Repository) *API {
-	return &API{services: services}
+// cache ne doit jamais être nil ; cache.New("") rend un cache désactivé qui
+// convient aux tests comme à un déploiement sans Redis.
+func New(services *service.Repository, c *cache.Cache) *API {
+	return &API{services: services, cache: c}
 }
 
 func (a *API) Router() *chi.Mux {

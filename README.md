@@ -8,10 +8,7 @@ chez CICAPE. Le dépôt ne couvre que certaines briques du site.
 
 ## Stack
 
-Go, chi, pgx, PostgreSQL, Docker. Front React / TypeScript / Vite / Chakra UI.
-
-Redis est démarré par le `docker-compose` et son URL est lue par la configuration,
-mais l'API ne s'en sert pas encore : rien n'est mis en cache aujourd'hui.
+Go, chi, pgx, PostgreSQL, Redis, Docker. Front React / TypeScript / Vite / Chakra UI.
 
 ## Lancer le projet
 
@@ -55,6 +52,10 @@ Variables d'environnement, toutes optionnelles en développement :
 Un service non publié n'est servi ni par le listing ni par le détail : son slug
 répond 404, et non 403, pour ne pas révéler qu'il existe.
 
+Le listing est mis en cache dans Redis pendant 30 secondes et vidé à chaque
+création. Si Redis est absent ou en panne, la réponse vient directement de
+PostgreSQL.
+
 ## Structure
 
 ```
@@ -64,6 +65,8 @@ internal/
   api/             routeur, handlers, écriture des réponses
   service/         domaine : structure, validation, accès aux données
   db/              pool de connexions et migrations
+  cache/           cache Redis, optionnel par construction
+  testdb/          base jetable pour les tests d'intégration
 web/               front React / TypeScript / Vite, consomme l'API
 ```
 
@@ -155,7 +158,35 @@ et laisse dix secondes à celles en cours pour finir, plutôt que de les couper.
 serveur en accepte un nombre limité. Le pool est plafonné pour ne pas le saturer
 sous charge.
 
+**Cache sur le listing, pas sur le détail.** Le listing est la page d'accueil :
+une seule réponse sert tous les visiteurs, le taux de réutilisation est élevé. Le
+détail est réparti sur autant de slugs qu'il y a de services, chaque entrée
+serait lue rarement et occuperait de la mémoire pour rien. Cacher là où ça ne
+rapporte pas ajoute un chemin d'invalidation à maintenir sans gain mesurable.
+
+**La clé contient tous les paramètres.** `published`, `limit` et `offset`
+changent le résultat, donc les trois entrent dans la clé. En oublier un ferait
+servir la page 2 à qui demande la page 1, un bug bien pire que l'absence de
+cache. Les valeurs sont bornées par `service.Page` avant de construire la clé et
+avant la requête SQL, pour que `limit=0` et `limit=20`, qui donnent le même
+résultat, partagent la même entrée.
+
+**TTL court plutôt qu'invalidation fine.** Trente secondes, plus une purge à la
+création. Suivre précisément quelles pages une écriture invalide demande de
+rejouer la logique de tri et de pagination dans le cache : beaucoup de code, et
+un décalage silencieux le jour où la requête change. Le TTL borne l'erreur sans
+rien à maintenir. Les entrées vivent dans un seul hash Redis, ce qui rend la
+purge atomique et en une commande, sans parcourir l'espace de clés.
+
+**Une panne de Redis ne fait pas tomber l'API.** Le cache est une optimisation,
+pas une dépendance. `cache.New` ne se connecte pas au démarrage, chaque commande
+est bornée à 200 ms, et toute erreur est journalisée puis ignorée : la réponse
+vient de PostgreSQL. Une URL vide donne un cache désactivé, ce qui permet de
+déployer sans Redis et de tester sans. Le prix à payer est visible : Redis
+injoignable ajoute le délai d'attente à chaque requête, faute de disjoncteur qui
+cesserait d'essayer après une série d'échecs.
+
 ## À venir
 
 Front : fiche détaillée, formulaire d'administration avec validation.
-Authentification et pages réservées. Cache Redis sur le listing. Déploiement.
+Authentification et pages réservées. Déploiement.

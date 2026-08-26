@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sofianealhoz/corporate-service-portal/internal/api"
+	"github.com/sofianealhoz/corporate-service-portal/internal/cache"
 	"github.com/sofianealhoz/corporate-service-portal/internal/service"
 	"github.com/sofianealhoz/corporate-service-portal/internal/testdb"
 )
@@ -33,7 +34,8 @@ func TestGetServicePubliePasLesBrouillons(t *testing.T) {
 	seed("audit-publie", true)
 	seed("audit-brouillon", false)
 
-	srv := httptest.NewServer(api.New(repo).Router())
+	// cache désactivé : ce test porte sur l'autorisation, pas sur Redis
+	srv := httptest.NewServer(api.New(repo, cache.New("")).Router())
 	defer srv.Close()
 
 	cases := []struct {

@@ -35,9 +35,7 @@ func scanRow(row pgx.Row) (Service, error) {
 
 // onlyPublished=true pour le site public, false pour l'administration
 func (r *Repository) List(ctx context.Context, onlyPublished bool, limit, offset int) ([]Service, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20 // garde-fou
-	}
+	limit, offset = Page(limit, offset) // garde-fou, même si l'appelant a déjà borné
 
 	// requête paramétrée : valeurs envoyées séparément du texte SQL,
 	// jamais de concaténation

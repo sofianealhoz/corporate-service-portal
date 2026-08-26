@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -18,14 +20,31 @@ type listResponse struct {
 	Count int               `json:"count"`
 }
 
+const (
+	listCacheKey = "services:list"
+	listCacheTTL = 30 * time.Second
+)
+
+// La clé doit contenir tout ce qui change le résultat. En oublier un revient à
+// servir la page d'une autre requête, ce qui est pire que pas de cache.
+func listCacheField(onlyPublished bool, limit, offset int) string {
+	return fmt.Sprintf("published=%t&limit=%d&offset=%d", onlyPublished, limit, offset)
+}
+
 func (a *API) handleListServices(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	// par défaut on ne montre que le publié : voir les brouillons doit être explicite
 	onlyPublished := q.Get("published") != "false"
 
-	limit := atoiOr(q.Get("limit"), 20)
-	offset := atoiOr(q.Get("offset"), 0)
+	limit, offset := service.Page(atoiOr(q.Get("limit"), 20), atoiOr(q.Get("offset"), 0))
+	field := listCacheField(onlyPublished, limit, offset)
+
+	var resp listResponse
+	if a.cache.Get(r.Context(), listCacheKey, field, &resp) {
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
 
 	// si le client coupe, le contexte est annulé et pgx interrompt la requête
 	items, err := a.services.List(r.Context(), onlyPublished, limit, offset)
@@ -35,7 +54,10 @@ func (a *API) handleListServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, listResponse{Items: items, Count: len(items)})
+	resp = listResponse{Items: items, Count: len(items)}
+	a.cache.Set(r.Context(), listCacheKey, field, resp, listCacheTTL)
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *API) handleGetService(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +104,10 @@ func (a *API) handleCreateService(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// le listing vient de changer : on le vide plutôt que de deviner quelles
+	// pages sont touchées
+	a.cache.Delete(r.Context(), listCacheKey)
 
 	writeJSON(w, http.StatusCreated, s)
 }
