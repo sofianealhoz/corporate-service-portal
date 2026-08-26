@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,20 +19,24 @@ import (
 // base de développement du docker-compose
 const devURL = "postgres://portal:portal@localhost:5432/portal?sslmode=disable"
 
-// base dérivée pour les tests, pour ne pas toucher aux données de développement
-const testDatabase = "portal_test"
+const suffix = "_test"
 
-// Connect ouvre un pool sur la base de test. Si PostgreSQL est injoignable, le
-// test est ignoré plutôt qu'en échec : `go test ./...` doit rester vert sur un
-// clone sans Docker.
+// Connect ouvre un pool sur la base de test et la rend vide.
+//
+// La base visée est toujours celle de l'URL suffixée par _test, jamais l'URL
+// elle-même : les tests vident la table services, ils ne doivent pas pouvoir
+// effacer une base de développement par une variable d'environnement mal
+// pointée.
+//
+// Si PostgreSQL est injoignable, le test est ignoré plutôt qu'en échec :
+// `go test ./...` doit rester vert sur un clone sans Docker.
 func Connect(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
 
-	// une URL explicite est utilisée telle quelle, sans créer de base
-	url, own := os.Getenv("TEST_DATABASE_URL"), false
+	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
-		url, own = devURL, true
+		url = devURL
 	}
 
 	cfg, err := pgxpool.ParseConfig(url)
@@ -39,20 +44,23 @@ func Connect(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("URL de base invalide : %v", err)
 	}
 
-	pool, err := open(ctx, cfg)
+	admin, err := open(ctx, cfg)
 	if err != nil {
 		t.Skipf("PostgreSQL injoignable (%v). Lancer `docker compose up -d`, "+
 			"ou définir TEST_DATABASE_URL, pour exécuter les tests d'intégration.", err)
 	}
 
-	if own {
-		createDatabase(ctx, t, pool)
-		pool.Close()
+	target := cfg.ConnConfig.Database
+	if !strings.HasSuffix(target, suffix) {
+		target += suffix
+		createDatabase(ctx, t, admin, target)
+	}
+	admin.Close()
 
-		cfg.ConnConfig.Database = testDatabase
-		if pool, err = open(ctx, cfg); err != nil {
-			t.Fatalf("connexion à %s : %v", testDatabase, err)
-		}
+	cfg.ConnConfig.Database = target
+	pool, err := open(ctx, cfg)
+	if err != nil {
+		t.Fatalf("connexion à %s : %v", target, err)
 	}
 	t.Cleanup(pool.Close)
 
@@ -67,14 +75,14 @@ func Connect(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func createDatabase(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
+func createDatabase(ctx context.Context, t *testing.T, admin *pgxpool.Pool, name string) {
 	t.Helper()
 
 	// CREATE DATABASE n'accepte pas IF NOT EXISTS ; 42P04 = base déjà présente
-	_, err := pool.Exec(ctx, `CREATE DATABASE `+testDatabase)
+	_, err := admin.Exec(ctx, `CREATE DATABASE `+name)
 	var pgErr *pgconn.PgError
 	if err != nil && !(errors.As(err, &pgErr) && pgErr.Code == "42P04") {
-		t.Fatalf("création de %s : %v", testDatabase, err)
+		t.Fatalf("création de %s : %v", name, err)
 	}
 }
 

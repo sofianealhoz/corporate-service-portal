@@ -90,15 +90,37 @@ pagination et bascule des brouillons, et `ServiceDetail.tsx`, sur
 go test ./...
 ```
 
-`internal/service/model_test.go` couvre la validation de `CreateInput` en
-table-driven, sept cas. Aucune base n'est nécessaire pour le lancer, c'est
-précisément ce que permet la séparation décrite au-dessus.
+Tests unitaires, sans dépendance :
 
-`internal/api/services_test.go` monte le routeur avec `httptest` sur une vraie
-base et vérifie qu'un brouillon répond 404 sur le détail. Il a besoin de
-PostgreSQL : lancer `docker compose up -d` avant. Sans base joignable il est
-ignoré, jamais en échec, pour que `go test ./...` reste vert sur un clone sans
-Docker.
+- `internal/service/model_test.go` couvre la validation de `CreateInput` en
+  table-driven, sept cas. Aucune base n'est nécessaire, c'est précisément ce que
+  permet la séparation décrite au-dessus.
+- `internal/cache/cache_test.go` vérifie qu'un cache désactivé, mal configuré ou
+  injoignable ne fait jamais échouer un appel.
+
+Tests d'intégration, sur les vrais services du `docker-compose` :
+
+```bash
+docker compose up -d
+go test ./...
+```
+
+- `internal/api/list_test.go` monte le routeur avec `httptest` et parcourt le
+  catalogue page par page : chaque service inséré apparaît une fois et une
+  seule. Il vérifie aussi qu'une création relue par son slug rend exactement la
+  ressource créée.
+- `internal/api/services_test.go` vérifie qu'un brouillon répond 404 sur le
+  détail.
+- `internal/cache/cache_test.go` fait un aller-retour écriture, lecture,
+  invalidation sur Redis.
+
+Sans PostgreSQL ni Redis joignables, ces tests sont ignorés, jamais en échec :
+`go test ./...` reste vert sur un clone sans Docker.
+
+`internal/testdb` ouvre toujours la base de l'URL suffixée par `_test`, qu'il
+crée au besoin, et vide la table `services` avant chaque test. Les données de
+développement ne sont donc jamais touchées, même si `TEST_DATABASE_URL` pointe
+la base de dev.
 
 ## Architecture
 
