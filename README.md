@@ -124,39 +124,85 @@ la base de dev.
 
 ## Architecture
 
-Vue d'ensemble des composants :
+Les deux premiers niveaux du modèle C4. C4 décrit un système à quatre niveaux de
+zoom : contexte, conteneurs, composants, code. On s'arrête à deux : les niveaux
+3 et 4 redisent ce que le code dit déjà, et se périment à la première refonte,
+alors qu'un schéma faux est pire qu'un schéma absent.
+
+### C4 niveau 1, contexte
+
+Qui utilise le système et pour quoi, sans rien dire de la technique.
 
 ```mermaid
-flowchart LR
-    U["Visiteur / Admin"]
-    F["Front React"]
-    A["API Go"]
-    P[("PostgreSQL")]
-    R[("Redis")]
+flowchart TB
+    V["Visiteur<br/><i>Personne</i>"]
+    A["Administrateur<br/><i>Personne</i>"]
+    S["Portail de services<br/><i>Système</i><br/>Publie un catalogue de<br/>prestations et permet<br/>de l'alimenter"]
 
-    U -->|HTTPS| F
-    F -->|REST / JSON| A
-    A -->|SQL| P
-    A -.->|cache| R
+    V -->|"Consulte le catalogue publié"| S
+    A -->|"Crée et publie des services"| S
 ```
 
-Trajet d'une requête :
+Aucun système tiers : ni paiement, ni messagerie, ni annuaire. Le portail est
+autonome, et le schéma le dit plutôt que de laisser imaginer le contraire.
+
+### C4 niveau 2, conteneurs
+
+Les unités déployables séparément, avec la technologie et le protocole sur
+chaque échange.
+
+```mermaid
+flowchart TB
+    V["Visiteur"]
+    A["Administrateur"]
+
+    subgraph portail["Portail de services"]
+        F["Front<br/><i>React, TypeScript, Vite</i><br/>Catalogue et fiches"]
+        API["API<br/><i>Go, chi</i><br/>Lecture et écriture<br/>du catalogue"]
+        DB[("Base de données<br/><i>PostgreSQL 17</i><br/>Services, migrations")]
+        R[("Cache<br/><i>Redis 7</i><br/>Listing, TTL 30 s")]
+    end
+
+    V -->|"HTTPS"| F
+    A -->|"HTTPS"| F
+    F -->|"REST, JSON sur HTTP<br/>/api/services"| API
+    API -->|"SQL sur TCP 5432<br/>pgx, requêtes paramétrées"| DB
+    API -.->|"RESP sur TCP 6379<br/>go-redis, optionnel"| R
+```
+
+Le trait plein est une dépendance dure, le pointillé une dépendance optionnelle :
+si Redis ne répond pas, l'API sert la même réponse depuis PostgreSQL.
+
+En développement le front et l'API sont deux processus, mais une seule origine
+pour le navigateur : Vite proxifie `/api` vers l'API.
+
+### Trajet d'une requête
+
+Ce diagramme ne fait pas partie du C4, c'est une séquence. Il montre ce que les
+schémas ci-dessus ne peuvent pas montrer : l'ordre des opérations.
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant M as Middlewares
     participant H as Handler
+    participant K as Cache Redis
     participant R as Repository
     participant DB as PostgreSQL
 
     C->>M: GET /api/services
     M->>H: RequestID, RealIP, Logger, Recoverer
-    H->>H: lecture des paramètres
-    H->>R: List(ctx, onlyPublished, limit, offset)
-    R->>DB: SELECT avec requête paramétrée
-    DB-->>R: lignes
-    R-->>H: []Service
+    H->>H: lecture et bornage des paramètres
+    H->>K: HGET services:list, clé complète
+    alt entrée présente
+        K-->>H: réponse en cache
+    else absente, ou Redis muet
+        H->>R: List(ctx, onlyPublished, limit, offset)
+        R->>DB: SELECT avec requête paramétrée
+        DB-->>R: lignes
+        R-->>H: []Service
+        H->>K: HSET puis EXPIRE NX, 30 s
+    end
     H-->>C: 200 avec la liste en JSON
 ```
 
