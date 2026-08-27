@@ -12,6 +12,15 @@ Go, chi, pgx, PostgreSQL, Redis, Docker. Front React / TypeScript / Vite / Chakr
 
 ## Lancer le projet
 
+Une seule commande, qui démarre la base, le cache, l'API et le front :
+
+```bash
+make dev
+```
+
+`make help` liste le reste. Le détail, si on préfère lancer chaque brique
+soi-même :
+
 L'API :
 
 ```bash
@@ -70,6 +79,8 @@ internal/
 web/               front React / TypeScript / Vite, consomme l'API
   src/components/  composants d'affichage, sans accès à l'API
   src/api.ts       seul endroit du front qui connaît les URLs
+Makefile           commandes communes aux deux applications
+.github/workflows/ CI, un job par application
 ```
 
 Le paquet `service` contient deux fichiers aux rôles distincts. `model.go` définit
@@ -83,6 +94,36 @@ affichent et ne déclenchent aucune requête, ce qui les rend réutilisables et
 testables isolément. Deux écrans les assemblent : `Catalogue.tsx`, avec
 pagination et bascule des brouillons, et `ServiceDetail.tsx`, sur
 `/services/{slug}`.
+
+## Monorepo
+
+Le front et l'API vivent dans le même dépôt. Ce qui en fait un monorepo n'est
+pas la cohabitation de deux dossiers, c'est l'outillage qui les tient ensemble :
+
+- **`Makefile` à la racine.** `make dev`, `make build`, `make test`, `make lint`,
+  `make clean` marchent quelle que soit la technologie derrière. Personne n'a à
+  apprendre deux chaînes d'outils pour contribuer à une moitié du dépôt.
+- **Une CI unique**, `.github/workflows/ci.yml`, avec un job par application :
+  un job Go qui compile, passe `go vet` et lance les tests sur de vrais
+  PostgreSQL et Redis, un job front qui installe, lint et construit.
+- **Une convention partagée**, `.editorconfig` à la racine, couvrant les deux.
+
+Pourquoi les réunir : un changement de contrat d'API se voit des deux côtés dans
+le même commit. `internal/service/model.go` et `web/src/types.ts` décrivent la
+même ressource ; séparés en deux dépôts, ils divergent en silence et la panne
+n'apparaît qu'à l'exécution. Ici la revue est unique et les versions ne peuvent
+pas se désynchroniser.
+
+Le prix à payer est une CI qui grossit : sans précaution, changer une ligne de
+CSS relancerait une base PostgreSQL pour rien. D'où les filtres de chemins, qui
+ne déclenchent le job Go que si `cmd/`, `internal/`, les fichiers de modules ou
+l'outillage partagé ont bougé, et le job front que pour `web/` ou ce même
+outillage. Un job `ci` final agrège les résultats, pour qu'une protection de
+branche ne bloque pas sur un job volontairement ignoré.
+
+Ce qui n'a pas été fait : déplacer le Go dans `apps/api/` pour « faire plus
+monorepo ». Cela casserait les chemins d'import et les commandes, sans rien
+apporter que l'outillage ci-dessus ne donne déjà.
 
 ## Tests
 
@@ -121,6 +162,13 @@ Sans PostgreSQL ni Redis joignables, ces tests sont ignorés, jamais en échec :
 crée au besoin, et vide la table `services` avant chaque test. Les données de
 développement ne sont donc jamais touchées, même si `TEST_DATABASE_URL` pointe
 la base de dev.
+
+Côté front, il n'y a pas encore de tests unitaires. `make test` y lance ce qui
+existe : la vérification de types TypeScript et le lint. Les composants sont
+écrits pour être testables, ils ne font aucun appel réseau et ne dépendent que
+de leurs props, mais le harnais reste à poser.
+
+`make test` couvre les deux applications d'un coup.
 
 ## Architecture
 

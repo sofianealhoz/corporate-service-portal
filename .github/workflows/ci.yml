@@ -1,0 +1,151 @@
+# Une CI pour les deux applications du dépôt, un job chacune.
+#
+# Les filtres de chemins évitent le défaut classique du monorepo : sans eux,
+# changer une ligne de CSS relancerait les tests Go et leur base PostgreSQL.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Détermine quelles applications sont touchées par le diff. Fait en shell
+  # plutôt qu'avec une action tierce : c'est vingt lignes et une dépendance de
+  # moins à faire confiance.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+
+          # premier push, force push ou base inconnue : on ne devine pas, on
+          # relance tout
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "base introuvable, exécution complète"
+            echo "api=true" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files=$(git diff --name-only "$base" HEAD)
+          echo "fichiers modifiés :"
+          echo "$files"
+
+          # l'outillage partagé touche les deux applications
+          shared='^(Makefile|\.github/workflows/|\.editorconfig)'
+          api='^(cmd/|internal/|go\.mod|go\.sum|docker-compose\.yml)'
+          web='^web/'
+
+          grep -qE "$api|$shared" <<< "$files" && echo "api=true" >> "$GITHUB_OUTPUT" || echo "api=false" >> "$GITHUB_OUTPUT"
+          grep -qE "$web|$shared" <<< "$files" && echo "web=true" >> "$GITHUB_OUTPUT" || echo "web=false" >> "$GITHUB_OUTPUT"
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+
+    # les tests d'intégration parlent aux vrais services, pas à des doublures
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: portal
+          POSTGRES_PASSWORD: portal
+          POSTGRES_DB: portal
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U portal -d portal"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Format
+        run: test -z "$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Tests
+        env:
+          TEST_DATABASE_URL: postgres://portal:portal@localhost:5432/portal?sslmode=disable
+          TEST_REDIS_URL: redis://localhost:6379
+        run: go test ./...
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  # Point d'entrée unique pour la protection de branche : un job filtré est
+  # « skipped », ce qu'une vérification requise refuserait sans cette porte.
+  ci:
+    needs: [api, web]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifie qu'aucun job n'a échoué
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "au moins un job a échoué"
+            exit 1
+          fi
+          echo "tout est vert"

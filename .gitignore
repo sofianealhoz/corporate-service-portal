@@ -7,7 +7,7 @@
 .env
 .env.local
 
-# dépendances front (M5)
+# dépendances et build du front
 node_modules/
 dist/
 

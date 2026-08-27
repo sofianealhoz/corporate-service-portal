@@ -1,0 +1,25 @@
+# Convention d'édition commune aux deux applications du dépôt, pour qu'un
+# aller-retour entre le Go et le TypeScript ne produise pas de diff parasite.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.go]
+indent_style = tab
+
+# la syntaxe Make impose la tabulation en début de recette
+[Makefile]
+indent_style = tab
+
+[*.sql]
+indent_size = 4
+
+# deux espaces en fin de ligne valent un retour à la ligne en Markdown
+[*.md]
+trim_trailing_whitespace = false
