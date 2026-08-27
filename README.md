@@ -1,10 +1,12 @@
 # Corporate Service Portal
 
-Catalogue de services en ligne : vitrine publique, fiche détaillée par service et
-espace d'administration. Back-end en Go avec PostgreSQL, front en React.
+Catalogue de services en ligne : API Go avec PostgreSQL et cache Redis, front
+React qui la consomme. Le dépôt couvre la vitrine publique et la fiche détaillée
+par service. L'espace d'administration du site d'origine n'est pas repris ici :
+la création passe par l'API, sans interface ni authentification.
 
 Reprise et réécriture d'une maquette faite pendant mon stage de développeur web
-chez CICAPE. Le dépôt ne couvre que certaines briques du site.
+chez CICAPE.
 
 ## Stack
 
@@ -58,8 +60,10 @@ Variables d'environnement, toutes optionnelles en développement :
 | `GET` | `/api/services/{slug}` | détail d'un service |
 | `POST` | `/api/services` | création |
 
-Un service non publié n'est servi ni par le listing ni par le détail : son slug
-répond 404, et non 403, pour ne pas révéler qu'il existe.
+Le détail ne sert jamais un service non publié : son slug répond 404, et non
+403, pour ne pas révéler qu'il existe. Le listing le masque aussi par défaut,
+mais `published=false` le montre. Ce paramètre est la vue d'administration du
+listing et il n'est pas encore protégé, voir « Limites connues ».
 
 Le listing pagine de deux façons. `offset` saute un nombre de lignes ; `after`
 reprend après la dernière ligne rendue et ignore `offset`. La réponse porte un
@@ -90,8 +94,9 @@ Makefile           commandes communes aux deux applications
 
 Le paquet `service` contient deux fichiers aux rôles distincts. `model.go` définit
 ce qu'est un service et ses règles de validation, sans aucun SQL. `repo.go` est le
-seul endroit du projet qui écrit du SQL. Cette séparation permet de tester les
-règles métier sans base de données.
+seul endroit qui écrit du SQL sur les services, en dehors des migrations et du
+harnais de test. Aucun handler ne touche à la base directement. Cette séparation
+permet de tester les règles métier sans base de données.
 
 Le front suit la même règle. `src/api.ts` est le seul fichier qui connaisse les
 URLs de l'API ; les composants de `src/components/` reçoivent en props ce qu'ils
@@ -109,8 +114,9 @@ pas la cohabitation de deux dossiers, c'est l'outillage qui les tient ensemble :
   `make clean` marchent quelle que soit la technologie derrière. Personne n'a à
   apprendre deux chaînes d'outils pour contribuer à une moitié du dépôt.
 - **Une CI unique**, `.github/workflows/ci.yml`, avec un job par application :
-  un job Go qui compile, passe `go vet` et lance les tests sur de vrais
-  PostgreSQL et Redis, un job front qui installe, lint et construit.
+  un job Go qui vérifie le formatage, compile, passe `go vet` et lance les
+  tests sur de vrais PostgreSQL et Redis, un job front qui installe, lint et
+  construit.
 - **Une convention partagée**, `.editorconfig` à la racine, couvrant les deux.
 
 Pourquoi les réunir : un changement de contrat d'API se voit des deux côtés dans
@@ -152,9 +158,10 @@ go test ./...
 ```
 
 - `internal/api/list_test.go` monte le routeur avec `httptest` et parcourt le
-  catalogue page par page : chaque service inséré apparaît une fois et une
-  seule. Il vérifie aussi qu'une création relue par son slug rend exactement la
-  ressource créée.
+  catalogue page par page, par `offset` puis par `after` : dans les deux cas
+  chaque service inséré apparaît une fois et une seule. Il vérifie aussi qu'une
+  création relue par son slug rend exactement la ressource créée, et qu'un
+  curseur illisible répond 400.
 - `internal/api/services_test.go` vérifie qu'un brouillon répond 404 sur le
   détail.
 - `internal/cache/cache_test.go` fait un aller-retour écriture, lecture,
@@ -297,8 +304,8 @@ détail est réparti sur autant de slugs qu'il y a de services, chaque entrée
 serait lue rarement et occuperait de la mémoire pour rien. Cacher là où ça ne
 rapporte pas ajoute un chemin d'invalidation à maintenir sans gain mesurable.
 
-**La clé contient tous les paramètres.** `published`, `limit` et `offset`
-changent le résultat, donc les trois entrent dans la clé. En oublier un ferait
+**La clé contient tous les paramètres.** `published`, `limit`, `offset` et
+`after` changent le résultat, donc tous entrent dans la clé. En oublier un ferait
 servir la page 2 à qui demande la page 1, un bug bien pire que l'absence de
 cache. Les valeurs sont bornées par `service.Page` avant de construire la clé et
 avant la requête SQL, pour que `limit=0` et `limit=20`, qui donnent le même
@@ -337,6 +344,28 @@ vient de PostgreSQL. Une URL vide donne un cache désactivé, ce qui permet de
 déployer sans Redis et de tester sans. Le prix à payer est visible : Redis
 injoignable ajoute le délai d'attente à chaque requête, faute de disjoncteur qui
 cesserait d'essayer après une série d'échecs.
+
+## Limites connues
+
+Ce que le dépôt ne fait pas, dit ici plutôt que découvert à la lecture du code :
+
+- **Aucune authentification.** `POST /api/services` est ouvert, et
+  `GET /api/services?published=false` liste les brouillons sans contrôle. Le
+  détail, lui, refuse déjà les brouillons, et `GetBySlug` porte le paramètre
+  `includeUnpublished` qui deviendra le point de branchement d'un contrôle
+  administrateur. Tant que ce contrôle n'existe pas, le dépôt n'est pas
+  déployable tel quel sur Internet.
+- **Pas de disjoncteur sur Redis.** Si Redis est injoignable, chaque requête paie
+  le délai d'attente de 200 ms avant de retomber sur PostgreSQL, au lieu que
+  l'API cesse d'essayer après une série d'échecs.
+- **`next_cursor` repose sur une page pleine.** Un catalogue dont le nombre de
+  services est un multiple exact de `limit` rend un dernier curseur qui mène à
+  une page vide. Le client s'arrête donc une requête plus tard que nécessaire,
+  sans jamais rien manquer ni répéter.
+- **Pas de tests unitaires côté front.** Les composants sont écrits pour être
+  testables, ils ne dépendent que de leurs props, mais le harnais reste à poser.
+- **Le back ne sert pas le front.** En développement Vite proxifie `/api` ; en
+  production, servir `web/dist/` depuis l'API ou un autre serveur reste à faire.
 
 ## À venir
 

@@ -76,10 +76,18 @@ export default function Catalogue() {
               <ServiceCard
                 key={s.id}
                 service={s}
+                // l'API refuse le détail d'un brouillon : ne pas proposer un
+                // lien qui mènerait à un 404
                 action={
-                  <Button asChild size="sm" variant="outline" mt="2">
-                    <Link to={`/services/${s.slug}`}>Voir la fiche</Link>
-                  </Button>
+                  s.published ? (
+                    <Button asChild size="sm" variant="outline" mt="2">
+                      <Link to={`/services/${s.slug}`}>Voir la fiche</Link>
+                    </Button>
+                  ) : (
+                    <Text fontSize="sm" color="gray.500" mt="2">
+                      Fiche publiée une fois le service publié.
+                    </Text>
+                  )
                 }
               />
             ))}
