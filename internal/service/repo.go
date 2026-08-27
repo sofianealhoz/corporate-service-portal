@@ -33,19 +33,46 @@ func scanRow(row pgx.Row) (Service, error) {
 	return s, err
 }
 
-// onlyPublished=true pour le site public, false pour l'administration
-func (r *Repository) List(ctx context.Context, onlyPublished bool, limit, offset int) ([]Service, error) {
-	limit, offset = Page(limit, offset) // garde-fou, même si l'appelant a déjà borné
+// ListQuery rassemble les paramètres du listing. Une structure plutôt que six
+// arguments positionnels, qu'on finit par intervertir.
+type ListQuery struct {
+	OnlyPublished bool // false pour l'administration
+	Limit         int
+	Offset        int
+	After         *Cursor // non nil : pagination par curseur, Offset est ignoré
+}
 
-	// requête paramétrée : valeurs envoyées séparément du texte SQL,
-	// jamais de concaténation
-	query := `SELECT ` + columns + `
-	          FROM services
-	          WHERE (NOT $1::bool OR published = TRUE)
-	          ORDER BY created_at DESC
-	          LIMIT $2 OFFSET $3`
+// l'ordre est total : created_at seul laisserait les ex aequo flotter d'une
+// page à l'autre. Il colle à idx_services_pagination, donc rien à trier.
+const listOrder = ` ORDER BY created_at DESC, id DESC`
 
-	rows, err := r.pool.Query(ctx, query, onlyPublished, limit, offset)
+// requêtes paramétrées : valeurs envoyées séparément du texte SQL,
+// jamais de concaténation
+const listByOffset = `SELECT ` + columns + `
+                      FROM services
+                      WHERE (NOT $1::bool OR published = TRUE)` + listOrder + `
+                      LIMIT $2 OFFSET $3`
+
+// la comparaison de n-uplets se lit comme le tri et sait utiliser l'index,
+// contrairement à un created_at < x OR (created_at = x AND id < y)
+const listByCursor = `SELECT ` + columns + `
+                      FROM services
+                      WHERE (NOT $1::bool OR published = TRUE)
+                        AND (created_at, id) < ($2, $3)` + listOrder + `
+                      LIMIT $4`
+
+func (r *Repository) List(ctx context.Context, q ListQuery) ([]Service, error) {
+	q.Limit, q.Offset = Page(q.Limit, q.Offset) // garde-fou, même si l'appelant a déjà borné
+
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if q.After != nil {
+		rows, err = r.pool.Query(ctx, listByCursor, q.OnlyPublished, q.After.CreatedAt, q.After.ID, q.Limit)
+	} else {
+		rows, err = r.pool.Query(ctx, listByOffset, q.OnlyPublished, q.Limit, q.Offset)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("liste des services : %w", err)
 	}
@@ -67,10 +94,6 @@ func (r *Repository) List(ctx context.Context, onlyPublished bool, limit, offset
 	return services, nil
 }
 
-// includeUnpublished aligne le détail sur le listing : un brouillon reste
-// invisible tant que l'appelant n'a pas le droit de le voir. C'est le point
-// d'extension pour un accès administrateur, encore inutilisé faute
-// d'authentification.
 func (r *Repository) GetBySlug(ctx context.Context, slug string, includeUnpublished bool) (Service, error) {
 	query := `SELECT ` + columns + `
 	          FROM services

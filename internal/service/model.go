@@ -2,8 +2,11 @@
 package service
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -80,4 +83,41 @@ func (in CreateInput) Validate() error {
 		return fmt.Errorf("le prix ne peut pas être négatif")
 	}
 	return nil
+}
+
+// Cursor repère la dernière ligne rendue, pour reprendre juste après elle.
+// created_at seul ne suffit pas : il n'est pas unique.
+type Cursor struct {
+	CreatedAt time.Time
+	ID        int64
+}
+
+// Encodé en base64 pour que le client le traite comme opaque et ne se mette pas
+// à le fabriquer lui-même : le format reste libre d'évoluer.
+func EncodeCursor(s Service) string {
+	raw := s.CreatedAt.UTC().Format(time.RFC3339Nano) + "|" + strconv.FormatInt(s.ID, 10)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
+func DecodeCursor(v string) (Cursor, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return Cursor{}, fmt.Errorf("curseur illisible")
+	}
+
+	at, id, ok := strings.Cut(string(raw), "|")
+	if !ok {
+		return Cursor{}, fmt.Errorf("curseur mal formé")
+	}
+
+	createdAt, err := time.Parse(time.RFC3339Nano, at)
+	if err != nil {
+		return Cursor{}, fmt.Errorf("date de curseur invalide")
+	}
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return Cursor{}, fmt.Errorf("identifiant de curseur invalide")
+	}
+
+	return Cursor{CreatedAt: createdAt, ID: n}, nil
 }

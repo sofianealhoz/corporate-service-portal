@@ -17,8 +17,9 @@ import (
 
 // miroir de la réponse du listing, qui n'est pas exportée par le paquet api
 type listBody struct {
-	Items []service.Service `json:"items"`
-	Count int               `json:"count"`
+	Items      []service.Service `json:"items"`
+	Count      int               `json:"count"`
+	NextCursor string            `json:"next_cursor"`
 }
 
 // Monte le routeur complet sur une vraie base. Cache désactivé : ces tests
@@ -32,12 +33,12 @@ func newServer(t *testing.T) (*httptest.Server, *service.Repository) {
 	return srv, repo
 }
 
-func TestListingPagine(t *testing.T) {
-	srv, repo := newServer(t)
+// insère n services publiés et rend leurs slugs
+func seed(t *testing.T, repo *service.Repository, n int) map[string]bool {
+	t.Helper()
 
-	const total = 5
-	attendus := map[string]bool{}
-	for i := range total {
+	slugs := map[string]bool{}
+	for i := range n {
 		slug := fmt.Sprintf("service-%d", i)
 		if _, err := repo.Create(context.Background(), service.CreateInput{
 			Slug:      slug,
@@ -48,8 +49,16 @@ func TestListingPagine(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("insertion de %s : %v", slug, err)
 		}
-		attendus[slug] = true
+		slugs[slug] = true
 	}
+	return slugs
+}
+
+func TestListingPagine(t *testing.T) {
+	srv, repo := newServer(t)
+
+	const total = 5
+	attendus := seed(t, repo, total)
 
 	// on parcourt tout le catalogue deux par deux et on vérifie que la
 	// pagination rend chaque service exactement une fois
@@ -141,4 +150,65 @@ func get[T any](t *testing.T, url string) T {
 		t.Fatalf("GET %s : réponse illisible : %v", url, err)
 	}
 	return body
+}
+
+// Même garantie que la pagination par offset, mais en reprenant après la
+// dernière ligne rendue plutôt qu'en sautant des lignes.
+func TestListingParCurseur(t *testing.T) {
+	srv, repo := newServer(t)
+
+	const total = 5
+	const pageSize = 2
+	attendus := seed(t, repo, total)
+
+	vus := map[string]bool{}
+	cursor := ""
+	for pages := 0; ; pages++ {
+		if pages > total {
+			t.Fatal("le parcours par curseur ne s'arrête pas")
+		}
+
+		url := fmt.Sprintf("%s/api/services?limit=%d", srv.URL, pageSize)
+		if cursor != "" {
+			url += "&after=" + cursor
+		}
+		body := get[listBody](t, url)
+
+		for _, s := range body.Items {
+			if vus[s.Slug] {
+				t.Fatalf("%s apparaît sur deux pages", s.Slug)
+			}
+			vus[s.Slug] = true
+		}
+
+		// pas de curseur suivant : c'était la dernière page
+		if body.NextCursor == "" {
+			break
+		}
+		cursor = body.NextCursor
+	}
+
+	if len(vus) != len(attendus) {
+		t.Fatalf("%d services insérés, %d rendus par le curseur", len(attendus), len(vus))
+	}
+	for slug := range attendus {
+		if !vus[slug] {
+			t.Fatalf("%s n'est apparu sur aucune page", slug)
+		}
+	}
+}
+
+func TestCurseurInvalide(t *testing.T) {
+	srv, _ := newServer(t)
+
+	res, err := http.Get(srv.URL + "/api/services?after=pas-un-curseur")
+	if err != nil {
+		t.Fatalf("requête : %v", err)
+	}
+	defer res.Body.Close()
+
+	// faute du client, pas panne du serveur
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("400 attendu, obtenu %d", res.StatusCode)
+	}
 }

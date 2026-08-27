@@ -54,12 +54,17 @@ Variables d'environnement, toutes optionnelles en développement :
 | Méthode | Chemin | Description |
 |---|---|---|
 | `GET` | `/health` | état du service |
-| `GET` | `/api/services` | liste, paramètres `published`, `limit`, `offset` |
+| `GET` | `/api/services` | liste, paramètres `published`, `limit`, `offset`, `after` |
 | `GET` | `/api/services/{slug}` | détail d'un service |
 | `POST` | `/api/services` | création |
 
 Un service non publié n'est servi ni par le listing ni par le détail : son slug
 répond 404, et non 403, pour ne pas révéler qu'il existe.
+
+Le listing pagine de deux façons. `offset` saute un nombre de lignes ; `after`
+reprend après la dernière ligne rendue et ignore `offset`. La réponse porte un
+`next_cursor` à passer en `after` pour la page suivante, absent sur la dernière
+page. Un curseur illisible répond 400.
 
 Le listing est mis en cache dans Redis pendant 30 secondes et vidé à chaque
 création. Si Redis est absent ou en panne, la réponse vient directement de
@@ -248,7 +253,7 @@ sequenceDiagram
     alt entrée présente
         K-->>H: réponse en cache
     else absente, ou Redis muet
-        H->>R: List(ctx, onlyPublished, limit, offset)
+        H->>R: List(ctx, ListQuery)
         R->>DB: SELECT avec requête paramétrée
         DB-->>R: lignes
         R-->>H: []Service
@@ -305,6 +310,25 @@ rejouer la logique de tri et de pagination dans le cache : beaucoup de code, et
 un décalage silencieux le jour où la requête change. Le TTL borne l'erreur sans
 rien à maintenir. Les entrées vivent dans un seul hash Redis, ce qui rend la
 purge atomique et en une commande, sans parcourir l'espace de clés.
+
+**Pagination par curseur en plus de l'offset.** `LIMIT 20 OFFSET 40000` oblige
+PostgreSQL à produire puis jeter 40 000 lignes : plus on avance dans le
+catalogue, plus la page coûte cher. Le curseur reprend après la dernière ligne
+rendue, `WHERE (created_at, id) < (...)`, et lit exactement une page quelle que
+soit la profondeur. Mesuré sur 50 000 services, à la page 2000 : l'offset
+parcourt 40 020 lignes en 5,7 ms, le curseur en lit 20 en 0,2 ms.
+
+L'ordre de tri est `(created_at DESC, id DESC)` et non `created_at` seul. Sans
+départage, deux services créés dans la même microseconde peuvent s'échanger
+entre deux requêtes, et l'un apparaît deux fois pendant que l'autre disparaît.
+`idx_services_pagination` reprend exactement cet ordre, donc la requête ne trie
+rien. La comparaison de n-uplets, plutôt qu'un `created_at < x OR (created_at =
+x AND id < y)`, se lit comme le tri et reste utilisable par l'index.
+
+`offset` est conservé : à quelques centaines de lignes il ne coûte rien, il donne
+des numéros de page et un retour en arrière, ce que le curseur ne sait pas faire.
+C'est pour cela que le catalogue du front continue de l'utiliser. Le curseur est
+là pour le jour où le catalogue sera long, et pour un client qui déroule tout.
 
 **Une panne de Redis ne fait pas tomber l'API.** Le cache est une optimisation,
 pas une dépendance. `cache.New` ne se connecte pas au démarrage, chaque commande

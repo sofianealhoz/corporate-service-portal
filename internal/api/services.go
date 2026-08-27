@@ -18,6 +18,8 @@ import (
 type listResponse struct {
 	Items []service.Service `json:"items"`
 	Count int               `json:"count"`
+	// absent quand la page est la dernière, ce qui dit au client de s'arrêter
+	NextCursor string `json:"next_cursor,omitempty"`
 }
 
 const (
@@ -27,18 +29,30 @@ const (
 
 // La clé doit contenir tout ce qui change le résultat. En oublier un revient à
 // servir la page d'une autre requête, ce qui est pire que pas de cache.
-func listCacheField(onlyPublished bool, limit, offset int) string {
-	return fmt.Sprintf("published=%t&limit=%d&offset=%d", onlyPublished, limit, offset)
+func listCacheField(q service.ListQuery, after string) string {
+	return fmt.Sprintf("published=%t&limit=%d&offset=%d&after=%s",
+		q.OnlyPublished, q.Limit, q.Offset, after)
 }
 
 func (a *API) handleListServices(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+	params := r.URL.Query()
 
 	// par défaut on ne montre que le publié : voir les brouillons doit être explicite
-	onlyPublished := q.Get("published") != "false"
+	q := service.ListQuery{OnlyPublished: params.Get("published") != "false"}
+	q.Limit, q.Offset = service.Page(atoiOr(params.Get("limit"), 20), atoiOr(params.Get("offset"), 0))
 
-	limit, offset := service.Page(atoiOr(q.Get("limit"), 20), atoiOr(q.Get("offset"), 0))
-	field := listCacheField(onlyPublished, limit, offset)
+	after := params.Get("after")
+	if after != "" {
+		cursor, err := service.DecodeCursor(after)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "curseur invalide : "+err.Error())
+			return
+		}
+		q.After = &cursor
+		q.Offset = 0 // ignoré par la requête : ne pas le laisser scinder la clé de cache
+	}
+
+	field := listCacheField(q, after)
 
 	var resp listResponse
 	if a.cache.Get(r.Context(), listCacheKey, field, &resp) {
@@ -47,7 +61,7 @@ func (a *API) handleListServices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// si le client coupe, le contexte est annulé et pgx interrompt la requête
-	items, err := a.services.List(r.Context(), onlyPublished, limit, offset)
+	items, err := a.services.List(r.Context(), q)
 	if err != nil {
 		log.Printf("liste des services : %v", err)
 		writeError(w, http.StatusInternalServerError, "erreur interne")
@@ -55,6 +69,11 @@ func (a *API) handleListServices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp = listResponse{Items: items, Count: len(items)}
+	// une page pleine est le seul indice qu'il reste peut-être une suite
+	if len(items) == q.Limit {
+		resp.NextCursor = service.EncodeCursor(items[len(items)-1])
+	}
+
 	a.cache.Set(r.Context(), listCacheKey, field, resp, listCacheTTL)
 
 	writeJSON(w, http.StatusOK, resp)
