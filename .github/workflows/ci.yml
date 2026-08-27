@@ -140,7 +140,9 @@ jobs:
   # Point d'entrée unique pour la protection de branche : un job filtré est
   # « skipped », ce qu'une vérification requise refuserait sans cette porte.
   ci:
-    needs: [api, web]
+    # changes en fait partie : sans lui, un échec du calcul des filtres
+    # ignorerait les deux jobs et cette porte passerait au vert
+    needs: [changes, api, web]
     if: always()
     runs-on: ubuntu-latest
     steps:
