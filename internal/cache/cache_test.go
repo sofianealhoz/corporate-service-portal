@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sofianealhoz/corporate-service-portal/internal/cache"
+	"github.com/sofianealhoz/corporate-service-portal/internal/testdb"
 )
 
 type payload struct {
@@ -57,7 +58,7 @@ func TestCacheAllerRetour(t *testing.T) {
 
 	var relu payload
 	if !c.Get(context.Background(), key, field, &relu) {
-		t.Skipf("Redis injoignable sur %s. Lancer `docker compose up -d` "+
+		testdb.SkipOrFail(t, "Redis injoignable sur %s. Lancer `docker compose up -d` "+
 			"pour exécuter ce test.", url)
 	}
 	if len(relu.Items) != len(écrit.Items) || relu.Items[0] != écrit.Items[0] {

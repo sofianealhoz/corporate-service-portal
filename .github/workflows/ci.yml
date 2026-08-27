@@ -107,6 +107,8 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://portal:portal@localhost:5432/portal?sslmode=disable
           TEST_REDIS_URL: redis://localhost:6379
+          # les services tournent : un test d'intégration ignoré est une erreur
+          REQUIRE_INTEGRATION: '1'
         run: go test ./...
 
   web:

@@ -156,7 +156,10 @@ go test ./...
   invalidation sur Redis.
 
 Sans PostgreSQL ni Redis joignables, ces tests sont ignorés, jamais en échec :
-`go test ./...` reste vert sur un clone sans Docker.
+`go test ./...` reste vert sur un clone sans Docker. En CI, où les services sont
+garantis présents, `REQUIRE_INTEGRATION=1` transforme cet abandon en échec : un
+test d'intégration ignoré par erreur de configuration est exactement ce qu'une
+CI doit attraper.
 
 `internal/testdb` ouvre toujours la base de l'URL suffixée par `_test`, qu'il
 crée au besoin, et vide la table `services` avant chaque test. Les données de

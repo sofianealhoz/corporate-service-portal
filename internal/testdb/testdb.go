@@ -46,7 +46,7 @@ func Connect(t *testing.T) *pgxpool.Pool {
 
 	admin, err := open(ctx, cfg)
 	if err != nil {
-		t.Skipf("PostgreSQL injoignable (%v). Lancer `docker compose up -d`, "+
+		SkipOrFail(t, "PostgreSQL injoignable (%v). Lancer `docker compose up -d`, "+
 			"ou définir TEST_DATABASE_URL, pour exécuter les tests d'intégration.", err)
 	}
 
@@ -73,6 +73,17 @@ func Connect(t *testing.T) *pgxpool.Pool {
 	}
 
 	return pool
+}
+
+// SkipOrFail ignore le test, sauf si REQUIRE_INTEGRATION vaut 1. En CI les
+// services sont garantis présents : un test d'intégration ignoré y serait un
+// échec silencieux, exactement ce qu'une CI est censée empêcher.
+func SkipOrFail(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("REQUIRE_INTEGRATION") == "1" {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
 }
 
 func createDatabase(ctx context.Context, t *testing.T, admin *pgxpool.Pool, name string) {
