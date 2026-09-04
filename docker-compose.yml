@@ -13,8 +13,9 @@ services:
       POSTGRES_PASSWORD: portal
       POSTGRES_DB: portal
     ports:
-      # exposé sur l'hôte pour lancer l'API avec go run hors conteneur
-      - "5432:5432"
+      # exposé sur l'hôte pour lancer l'API avec go run hors conteneur.
+      # POSTGRES_PORT permet de se décaler si 5432 est déjà pris.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -29,7 +30,7 @@ services:
     image: redis:7-alpine
     container_name: portal-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

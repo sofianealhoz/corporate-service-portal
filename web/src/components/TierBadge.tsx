@@ -1,22 +1,30 @@
-import { Badge } from '@chakra-ui/react'
+import { Box } from '@chakra-ui/react'
 import type { Tier } from '../types'
-
-// libellés et couleurs par gamme, alignés sur le CHECK en base
-const tiers: Record<Tier, { label: string; palette: string }> = {
-  standard: { label: 'Standard', palette: 'gray' },
-  premium: { label: 'Premium', palette: 'blue' },
-  enterprise: { label: 'Entreprise', palette: 'purple' },
-}
+import { tierStyles } from '../theme'
 
 interface TierBadgeProps {
   tier: Tier
 }
 
 export default function TierBadge({ tier }: TierBadgeProps) {
-  const { label, palette } = tiers[tier]
+  const s = tierStyles[tier]
   return (
-    <Badge colorPalette={palette} alignSelf="start">
-      {label}
-    </Badge>
+    <Box
+      as="span"
+      display="inline-block"
+      alignSelf="start"
+      px="2.5"
+      py="1"
+      borderRadius="full"
+      borderWidth="1px"
+      borderColor={s.border}
+      bg={s.bg}
+      color={s.fg}
+      fontSize="xs"
+      fontWeight="600"
+      letterSpacing="0.02em"
+    >
+      {s.label}
+    </Box>
   )
 }

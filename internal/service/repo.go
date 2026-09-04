@@ -94,6 +94,15 @@ func (r *Repository) List(ctx context.Context, q ListQuery) ([]Service, error) {
 	return services, nil
 }
 
+// DeleteAll vide le catalogue. Réservé à l'amorçage de démonstration, qui doit
+// pouvoir repartir d'un état connu ; aucun handler HTTP ne l'expose.
+func (r *Repository) DeleteAll(ctx context.Context) error {
+	if _, err := r.pool.Exec(ctx, `TRUNCATE services RESTART IDENTITY`); err != nil {
+		return fmt.Errorf("vidage du catalogue : %w", err)
+	}
+	return nil
+}
+
 func (r *Repository) GetBySlug(ctx context.Context, slug string, includeUnpublished bool) (Service, error) {
 	query := `SELECT ` + columns + `
 	          FROM services

@@ -20,6 +20,10 @@ Une seule commande, qui démarre la base, le cache, l'API et le front :
 make dev
 ```
 
+Pour une démonstration, `./scripts/demo.sh` fait la même chose en remplissant
+d'abord le catalogue avec un jeu de services, et en se décalant automatiquement
+si un port est déjà pris sur la machine. Il ne demande pas `make`.
+
 `make help` liste le reste. Le détail, si on préfère lancer chaque brique
 soi-même :
 
@@ -78,6 +82,7 @@ PostgreSQL.
 
 ```
 cmd/api/           point d'entrée, assemble config, base et routeur
+cmd/seed/          remplit le catalogue pour une démonstration
 internal/
   config/          lecture des réglages depuis l'environnement
   api/             routeur, handlers, écriture des réponses
@@ -89,6 +94,7 @@ web/               front React / TypeScript / Vite, consomme l'API
   src/components/  composants d'affichage, sans accès à l'API
   src/api.ts       seul endroit du front qui connaît les URLs
 Makefile           commandes communes aux deux applications
+scripts/demo.sh    démarrage complet avec catalogue rempli
 .github/workflows/ CI, un job par application
 ```
 
